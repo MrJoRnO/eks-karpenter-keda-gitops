@@ -11,7 +11,7 @@ spec:
       authenticationRef:
         name: keda-aws-credentials
       metadata:
-        queueURL: "REPLACE_WITH_SQS_QUEUE_URL"
+        queueURL: "https://sqs.eu-central-1.amazonaws.com/194636597980/sqs-job-dev-messages"
         queueLength: "1"
         awsRegion: "eu-central-1"
         identityOwner: operator
