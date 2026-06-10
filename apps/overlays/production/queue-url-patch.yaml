@@ -1,0 +1,17 @@
+# Set after terraform apply:
+#   terraform -chdir=terraform output -raw sqs_queue_url
+apiVersion: keda.sh/v1alpha1
+kind: ScaledJob
+metadata:
+  name: sqs-to-s3
+  namespace: sqs-processor
+spec:
+  triggers:
+    - type: aws-sqs-queue
+      authenticationRef:
+        name: keda-aws-credentials
+      metadata:
+        queueURL: "REPLACE_WITH_SQS_QUEUE_URL"
+        queueLength: "1"
+        awsRegion: "eu-central-1"
+        identityOwner: operator

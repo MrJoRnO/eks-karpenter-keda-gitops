@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: sqs-processor
+
+resources:
+  - ../../base
+
+patches:
+  - path: queue-url-patch.yaml
+
+# CD pipeline updates newTag on every successful build of the main branch.
+# Format: main-<short-git-sha>  e.g. main-a1b2c3d4
+images:
+  - name: platform/sqs-to-s3-job
+    newName: REPLACE_WITH_ECR_REGISTRY/platform/sqs-to-s3-job
+    newTag: main-placeholder

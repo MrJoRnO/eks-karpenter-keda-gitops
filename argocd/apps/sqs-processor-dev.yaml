@@ -1,0 +1,23 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: sqs-processor-dev
+  namespace: argocd
+spec:
+  project: sqs-job
+
+  source:
+    repoURL: https://github.com/MrJoRnO/eks-karpenter-keda-gitops
+    targetRevision: dev
+    path: apps/overlays/dev
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: sqs-processor
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

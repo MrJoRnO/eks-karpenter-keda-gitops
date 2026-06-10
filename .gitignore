@@ -1,0 +1,28 @@
+# Terraform — provider binaries and local cache (large binary files)
+**/.terraform/*
+
+# Terraform state — contains sensitive data (resource IDs, IAM ARNs, etc.)
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+
+# Terraform plan output
+*tfplan*
+crash.log
+crash.*.log
+
+# tfvars may contain secrets — commit only the non-sensitive ones explicitly
+*.tfvars
+*.tfvars.json
+# Allow our environment tfvars (no secrets inside)
+!terraform/dev.tfvars
+
+# Terraform override files (local machine overrides, not for sharing)
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Terraform CLI config
+.terraformrc
+terraform.rc

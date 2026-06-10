@@ -1,0 +1,26 @@
+apiVersion: karpenter.k8s.aws/v1
+kind: EC2NodeClass
+metadata:
+  name: ng-spot
+spec:
+  # AL2023 is the default modern EKS-optimised AMI
+  amiSelectorTerms:
+    - alias: al2023@latest
+
+  # IAM role Karpenter assigns to instances it launches
+  # Must match the role created in the iam module (karpenter-node-role)
+  role: "dev-karpenter-node-role"
+
+  # Karpenter discovers subnets and security groups using the
+  # karpenter.sh/discovery tag applied by the vpc/eks Terraform modules
+  subnetSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: "sqs-job-dev"
+
+  securityGroupSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: "sqs-job-dev"
+
+  tags:
+    karpenter.sh/discovery: "sqs-job-dev"
+    NodePool: ng-spot

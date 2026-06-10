@@ -1,0 +1,69 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledJob
+metadata:
+  name: sqs-to-s3
+  namespace: sqs-processor
+spec:
+  pollingInterval: 15
+  maxReplicaCount: 10
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+
+  triggers:
+    - type: aws-sqs-queue
+      authenticationRef:
+        name: keda-aws-credentials
+      metadata:
+        # Patched per-environment in overlays/
+        queueURL: ""
+        queueLength: "1"
+        awsRegion: "eu-central-1"
+        identityOwner: operator
+
+  jobTargetRef:
+    template:
+      spec:
+        restartPolicy: Never
+        serviceAccountName: sqs-processor
+
+        nodeSelector:
+          node-pool: ng-spot
+        tolerations:
+          - key: workload
+            value: spot
+            effect: NoSchedule
+
+        containers:
+          - name: sqs-to-s3
+            # Short image name — registry and tag are set by the CD pipeline
+            # via kustomize edit set image in the overlay kustomization.yaml
+            image: platform/sqs-to-s3-job:placeholder
+            imagePullPolicy: Always
+
+            env:
+              - name: SQS_QUEUE_URL
+                valueFrom:
+                  configMapKeyRef:
+                    name: sqs-processor-config
+                    key: QUEUE_URL
+              - name: S3_BUCKET_NAME
+                valueFrom:
+                  configMapKeyRef:
+                    name: sqs-processor-config
+                    key: BUCKET_NAME
+
+            resources:
+              requests:
+                cpu: 100m
+                memory: 128Mi
+              limits:
+                cpu: 500m
+                memory: 256Mi
+
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              runAsNonRoot: true
+              runAsUser: 1000
+              capabilities:
+                drop: ["ALL"]
