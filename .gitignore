@@ -14,8 +14,8 @@ crash.*.log
 # tfvars may contain secrets — commit only the non-sensitive ones explicitly
 *.tfvars
 *.tfvars.json
-# Allow our environment tfvars (no secrets inside)
-!terraform/dev.tfvars
+# Allow environment tfvars (no secrets inside, only github_org)
+!terraform/environments/*/terraform.tfvars
 
 # Terraform override files (local machine overrides, not for sharing)
 override.tf

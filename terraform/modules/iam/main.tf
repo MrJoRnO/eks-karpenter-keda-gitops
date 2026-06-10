@@ -2,9 +2,10 @@ data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
 locals {
-  oidc_host = replace(var.cluster_oidc_url, "https://", "")
-  account   = data.aws_caller_identity.current.account_id
-  region    = data.aws_region.current.name
+  oidc_host       = replace(var.cluster_oidc_url, "https://", "")
+  account         = data.aws_caller_identity.current.account_id
+  region          = data.aws_region.current.name
+  github_oidc_arn = var.create_github_oidc_provider ? aws_iam_openid_connect_provider.github[0].arn : var.github_oidc_provider_arn
 }
 
 # =============================================================================
@@ -270,9 +271,58 @@ resource "aws_iam_role_policy_attachment" "job" {
 }
 
 # =============================================================================
-# 4. GitHub OIDC — lets GitHub Actions push to ECR without static keys
+# 4. KEDA operator IRSA — needs GetQueueAttributes to poll queue depth
+#    identityOwner: operator in TriggerAuthentication means KEDA itself polls SQS.
+# =============================================================================
+data "aws_iam_policy_document" "keda_assume" {
+  statement {
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+    effect  = "Allow"
+    principals {
+      type        = "Federated"
+      identifiers = [var.cluster_oidc_arn]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "${local.oidc_host}:sub"
+      values   = ["system:serviceaccount:keda:keda-operator"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "${local.oidc_host}:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "keda" {
+  name               = "${var.env}-keda-operator-role"
+  assume_role_policy = data.aws_iam_policy_document.keda_assume.json
+}
+
+resource "aws_iam_policy" "keda" {
+  name = "${var.env}-keda-sqs-policy"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["sqs:GetQueueAttributes", "sqs:GetQueueUrl"]
+      Resource = var.sqs_queue_arn
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "keda" {
+  role       = aws_iam_role.keda.name
+  policy_arn = aws_iam_policy.keda.arn
+}
+
+# =============================================================================
+# 5. GitHub OIDC — lets GitHub Actions push to ECR without static keys
 # =============================================================================
 resource "aws_iam_openid_connect_provider" "github" {
+  count           = var.create_github_oidc_provider ? 1 : 0
   url             = "https://token.actions.githubusercontent.com"
   client_id_list  = ["sts.amazonaws.com"]
   thumbprint_list = ["6938fd4d98bab03faadb97b34396831e3780aea1"]
@@ -284,7 +334,7 @@ data "aws_iam_policy_document" "github_assume" {
     effect  = "Allow"
     principals {
       type        = "Federated"
-      identifiers = [aws_iam_openid_connect_provider.github.arn]
+      identifiers = [local.github_oidc_arn]
     }
     condition {
       test     = "StringLike"

@@ -21,7 +21,6 @@ spec:
         - key: kubernetes.io/arch
           operator: In
           values: ["amd64"]
-        # Allow a range of instance families so Spot capacity is available
         - key: karpenter.k8s.aws/instance-category
           operator: In
           values: ["t", "m", "c"]
@@ -29,7 +28,6 @@ spec:
           operator: Gt
           values: ["2"]
 
-      # Taint keeps non-job workloads off these nodes
       taints:
         - key: workload
           value: spot

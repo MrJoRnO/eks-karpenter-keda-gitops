@@ -10,3 +10,15 @@ variable "interruption_queue_arn" {
 }
 variable "github_org"      { type = string }
 variable "github_app_repo" { type = string }
+
+variable "create_github_oidc_provider" {
+  description = "Create the GitHub Actions OIDC provider. Set false when the provider already exists in the account (one per account)."
+  type        = bool
+  default     = true
+}
+
+variable "github_oidc_provider_arn" {
+  description = "ARN of the existing GitHub OIDC provider. Required when create_github_oidc_provider = false."
+  type        = string
+  default     = ""
+}

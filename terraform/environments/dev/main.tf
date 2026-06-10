@@ -1,20 +1,39 @@
 # =============================================================================
-# Root module — SQS-to-S3 job infrastructure.
+# Dev environment — SQS-to-S3 job infrastructure
 # Apply order: make apply-infra ENV=dev → make apply-platform ENV=dev
 # =============================================================================
 
+locals {
+  env          = "dev"
+  aws_region   = "eu-central-1"
+  cluster_name = "sqs-job-dev"
+
+  common_tags = {
+    Environment = local.env
+    Project     = "sqs-to-s3-job"
+    ManagedBy   = "terraform"
+  }
+}
+
+data "aws_caller_identity" "current" {}
+
+data "aws_eks_cluster_auth" "this" {
+  name       = local.cluster_name
+  depends_on = [module.eks]
+}
+
 # -----------------------------------------------------------------------------
-# 1. VPC
+# 1. VPC — 2 AZs, single NAT GW (cost-optimised for dev)
 # -----------------------------------------------------------------------------
 module "vpc" {
-  source = "./modules/vpc"
+  source = "../../modules/vpc"
 
   vpc_name        = "${local.cluster_name}-vpc"
-  vpc_cidr        = local.cfg.vpc_cidr
-  azs             = local.cfg.azs
-  private_subnets = local.cfg.private_subnets
-  public_subnets  = local.cfg.public_subnets
-  single_nat_gw   = local.cfg.single_nat_gw
+  vpc_cidr        = "10.0.0.0/16"
+  azs             = ["${local.aws_region}a", "${local.aws_region}b"]
+  private_subnets = ["10.0.1.0/24", "10.0.2.0/24"]
+  public_subnets  = ["10.0.101.0/24", "10.0.102.0/24"]
+  single_nat_gw   = true
   cluster_name    = local.cluster_name
 
   tags = local.common_tags
@@ -22,29 +41,30 @@ module "vpc" {
 
 # -----------------------------------------------------------------------------
 # 2. EKS cluster
-#    System node group for platform components (ArgoCD, Karpenter, KEDA).
-#    Spot nodes are provisioned on-demand by Karpenter.
 # -----------------------------------------------------------------------------
 module "eks" {
-  source = "./modules/eks"
+  source = "../../modules/eks"
 
-  env          = var.env
+  env          = local.env
   cluster_name = local.cluster_name
-  aws_region   = var.aws_region
+  aws_region   = local.aws_region
   vpc_id       = module.vpc.vpc_id
   private_subnets = module.vpc.private_subnets
 
-  cluster_endpoint_public_access = local.cfg.cluster_endpoint_public_access
-  system_node_group              = local.cfg.system_node_group
+  cluster_endpoint_public_access = true
+  system_node_group = {
+    instance_types = ["t3.medium"]
+    desired_size   = 2
+  }
 
   tags = local.common_tags
 }
 
 # -----------------------------------------------------------------------------
-# 3. SQS queue — receives messages for the job to process
+# 3. SQS queue
 # -----------------------------------------------------------------------------
 module "sqs" {
-  source = "./modules/sqs"
+  source = "../../modules/sqs"
 
   queue_name   = "${local.cluster_name}-messages"
   cluster_name = local.cluster_name
@@ -53,35 +73,33 @@ module "sqs" {
 }
 
 # -----------------------------------------------------------------------------
-# 4. S3 bucket — stores processed messages as timestamped .txt files
+# 4. S3 bucket
 # -----------------------------------------------------------------------------
 module "s3" {
-  source = "./modules/s3"
+  source = "../../modules/s3"
 
   bucket_name = "${local.cluster_name}-messages-${data.aws_caller_identity.current.account_id}"
 
   tags = local.common_tags
 }
 
-data "aws_caller_identity" "current" {}
-
 # -----------------------------------------------------------------------------
-# 5. ECR repository for the job container image
+# 5. ECR repository
 # -----------------------------------------------------------------------------
 module "ecr" {
-  source = "./modules/ecr"
+  source = "../../modules/ecr"
 
   repository_name = "platform/sqs-to-s3-job"
   tags            = local.common_tags
 }
 
 # -----------------------------------------------------------------------------
-# 6. IAM — IRSA roles + Karpenter node role + GitHub OIDC
+# 6. IAM — IRSA + Karpenter node role + GitHub OIDC (created here, shared with prod)
 # -----------------------------------------------------------------------------
 module "iam" {
-  source = "./modules/iam"
+  source = "../../modules/iam"
 
-  env              = var.env
+  env              = local.env
   cluster_name     = local.cluster_name
   cluster_oidc_arn = module.eks.cluster_oidc_arn
   cluster_oidc_url = module.eks.cluster_oidc_url
@@ -90,8 +108,9 @@ module "iam" {
   s3_bucket_arn          = module.s3.bucket_arn
   interruption_queue_arn = module.sqs.interruption_queue_arn
 
-  github_org      = var.github_org
-  github_app_repo = var.github_app_repo
+  github_org                  = var.github_org
+  github_app_repo             = "sqs-to-s3-worker"
+  create_github_oidc_provider = true
 }
 
 # Access entry so Karpenter-managed nodes can join the cluster
@@ -103,22 +122,20 @@ resource "aws_eks_access_entry" "karpenter_nodes" {
   depends_on = [module.eks, module.iam]
 }
 
-# -----------------------------------------------------------------------------
-# 7. API server readiness gate (same reason as base project)
-# -----------------------------------------------------------------------------
+# API server readiness gate
 resource "time_sleep" "wait_for_cluster" {
   create_duration = "60s"
   depends_on      = [module.eks, aws_eks_access_entry.karpenter_nodes]
 }
 
 # -----------------------------------------------------------------------------
-# 8. Platform bootstrap — ArgoCD, Karpenter, KEDA
+# 7. Platform bootstrap — ArgoCD, Karpenter, KEDA
 # -----------------------------------------------------------------------------
 module "platform_bootstrap" {
-  source = "./modules/platform_bootstrap"
+  source = "../../modules/platform_bootstrap"
 
-  env        = var.env
-  aws_region = var.aws_region
+  env        = local.env
+  aws_region = local.aws_region
 
   cluster_name                  = local.cluster_name
   cluster_endpoint              = module.eks.cluster_endpoint
@@ -126,6 +143,7 @@ module "platform_bootstrap" {
   karpenter_node_role_name      = module.iam.karpenter_node_role_name
   karpenter_interruption_queue  = module.sqs.interruption_queue_name
   job_role_arn                  = module.iam.job_role_arn
+  keda_operator_role_arn        = module.iam.keda_operator_role_arn
   sqs_queue_url                 = module.sqs.queue_url
   s3_bucket_name                = module.s3.bucket_name
   ecr_registry                  = module.ecr.registry_url

@@ -9,7 +9,7 @@ spec:
   source:
     repoURL: https://github.com/MrJoRnO/eks-karpenter-keda-gitops
     targetRevision: main
-    path: apps/overlays/production
+    path: apps/overlays/prod
 
   destination:
     server: https://kubernetes.default.svc

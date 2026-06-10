@@ -1,10 +1,11 @@
 # =============================================================================
 # Platform Bootstrap
-# Install order: ArgoCD → Karpenter → KEDA → deploy ScaledJob via ArgoCD
+# Install order: ArgoCD → Karpenter → KEDA → deploy via ArgoCD + kubectl
+# Requires: kubectl configured against the cluster before apply-platform
 # =============================================================================
 
 # -----------------------------------------------------------------------------
-# 1. ArgoCD (optional but included for full GitOps setup)
+# 1. ArgoCD
 # -----------------------------------------------------------------------------
 resource "helm_release" "argocd" {
   name             = "argocd"
@@ -26,7 +27,6 @@ resource "helm_release" "argocd" {
     name  = "repoServer.replicas"
     value = "1"
   }
-  # Keep ArgoCD on system nodes
   set {
     name  = "global.nodeSelector.role"
     value = "system"
@@ -60,7 +60,6 @@ resource "helm_release" "karpenter" {
     name  = "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
     value = var.karpenter_controller_role_arn
   }
-  # Keep Karpenter controller on system nodes
   set {
     name  = "nodeSelector.role"
     value = "system"
@@ -80,7 +79,6 @@ resource "helm_release" "keda" {
   namespace        = "keda"
   create_namespace = true
 
-  # Keep KEDA controllers on system nodes
   set {
     name  = "operator.nodeSelector.role"
     value = "system"
@@ -89,19 +87,21 @@ resource "helm_release" "keda" {
     name  = "metricsServer.nodeSelector.role"
     value = "system"
   }
+  set {
+    name  = "podAnnotations.eks\\.amazonaws\\.com/role-arn"
+    value = var.keda_operator_role_arn
+  }
 
   depends_on = [helm_release.karpenter]
 }
 
 # -----------------------------------------------------------------------------
-# 4. Deploy NodePool + EC2NodeClass + ScaledJob via ArgoCD Application
-#    Source: the k8s/ directory of the config repo.
-#    Karpenter + KEDA CRDs must exist before ArgoCD tries to sync.
+# 4. ArgoCD AppProject + Applications
 # -----------------------------------------------------------------------------
 resource "null_resource" "argocd_apps" {
   triggers = {
     cluster_name = var.cluster_name
-    job_role_arn = var.job_role_arn
+    env          = var.env
   }
 
   provisioner "local-exec" {
@@ -132,7 +132,7 @@ spec:
       kind: EC2NodeClass
 YAML
 
-      # Karpenter NodePool + EC2NodeClass
+      # Karpenter NodePool + EC2NodeClass (env-specific overlay)
       kubectl apply -f - <<YAML
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -144,7 +144,7 @@ spec:
   source:
     repoURL: ${var.config_repo_url}
     targetRevision: main
-    path: k8s/karpenter
+    path: infra/karpenter/overlays/${var.env}
   destination:
     server: https://kubernetes.default.svc
     namespace: karpenter
@@ -154,7 +154,7 @@ spec:
       selfHeal: true
 YAML
 
-      # ScaledJob namespace + manifests
+      # ScaledJob (env-specific overlay, tracks env branch)
       kubectl apply -f - <<YAML
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -165,8 +165,8 @@ spec:
   project: sqs-job
   source:
     repoURL: ${var.config_repo_url}
-    targetRevision: main
-    path: k8s/scaled-job
+    targetRevision: ${var.env == "prod" ? "main" : "dev"}
+    path: apps/overlays/${var.env}
   destination:
     server: https://kubernetes.default.svc
     namespace: sqs-processor
@@ -174,6 +174,8 @@ spec:
     automated:
       prune: true
       selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
 YAML
     EOF
   }
@@ -182,8 +184,9 @@ YAML
 }
 
 # -----------------------------------------------------------------------------
-# 5. ConfigMap with runtime values (queue URL, bucket, role ARN)
-#    ArgoCD syncs the ScaledJob but doesn't know these values at commit time.
+# 5. ConfigMap + ServiceAccount with IRSA annotation
+#    Namespace and SA are owned by Terraform (not in Kustomize) to avoid
+#    ArgoCD overwriting the IRSA annotation on every sync.
 # -----------------------------------------------------------------------------
 resource "null_resource" "processor_config" {
   triggers = {
@@ -204,7 +207,6 @@ resource "null_resource" "processor_config" {
         --from-literal=BUCKET_NAME=${var.s3_bucket_name} \
         --dry-run=client -o yaml | kubectl apply -f -
 
-      # Patch service account with IRSA annotation
       kubectl create serviceaccount sqs-processor \
         --namespace=sqs-processor \
         --dry-run=client -o yaml | kubectl apply -f -
