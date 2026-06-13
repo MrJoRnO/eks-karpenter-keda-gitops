@@ -88,7 +88,7 @@ resource "helm_release" "keda" {
     value = "system"
   }
   set {
-    name  = "podAnnotations.eks\\.amazonaws\\.com/role-arn"
+    name  = "serviceAccount.operator.annotations.eks\\.amazonaws\\.com/role-arn"
     value = var.keda_operator_role_arn
   }
 
