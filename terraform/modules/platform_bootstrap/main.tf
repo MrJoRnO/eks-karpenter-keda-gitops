@@ -143,7 +143,7 @@ spec:
   project: sqs-job
   source:
     repoURL: ${var.config_repo_url}
-    targetRevision: main
+    targetRevision: ${var.env == "prod" ? "main" : "dev"}
     path: infra/karpenter/overlays/${var.env}
   destination:
     server: https://kubernetes.default.svc
