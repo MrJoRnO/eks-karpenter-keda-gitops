@@ -3,7 +3,7 @@ kind: EC2NodeClass
 metadata:
   name: ng-spot
 spec:
-  role: "prod-karpenter-node-role"
+  instanceProfile: "prod-karpenter-node-profile"
   subnetSelectorTerms:
     - tags:
         karpenter.sh/discovery: "sqs-job-prod"

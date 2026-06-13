@@ -6,7 +6,7 @@ spec:
   amiSelectorTerms:
     - alias: al2023@latest
   # Patched per-environment in overlays/
-  role: "REPLACE_WITH_ENV_NODE_ROLE"
+  instanceProfile: "REPLACE_WITH_ENV_NODE_PROFILE"
   subnetSelectorTerms:
     - tags:
         karpenter.sh/discovery: "REPLACE_WITH_CLUSTER_NAME"

@@ -188,14 +188,19 @@ resource "aws_iam_policy" "karpenter_controller" {
         }
       },
       {
-        Sid      = "AllowScopedInstanceProfileActions"
+        Sid      = "AllowGetInstanceProfile"
+        Effect   = "Allow"
+        Resource = "*"
+        Action   = ["iam:GetInstanceProfile"]
+      },
+      {
+        Sid      = "AllowScopedInstanceProfileMutations"
         Effect   = "Allow"
         Resource = "*"
         Action = [
           "iam:AddRoleToInstanceProfile",
           "iam:CreateInstanceProfile",
           "iam:DeleteInstanceProfile",
-          "iam:GetInstanceProfile",
           "iam:RemoveRoleFromInstanceProfile",
           "iam:TagInstanceProfile",
         ]
