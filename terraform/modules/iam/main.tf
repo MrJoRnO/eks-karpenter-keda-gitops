@@ -88,37 +88,63 @@ resource "aws_iam_policy" "karpenter_controller" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "AllowScopedEC2InstanceActions"
+        Sid    = "AllowScopedEC2InstanceAccessActions"
         Effect = "Allow"
         Resource = [
           "arn:aws:ec2:*::image/*",
           "arn:aws:ec2:*::snapshot/*",
-          "arn:aws:ec2:*:*:volume/*",
-          "arn:aws:ec2:*:*:network-interface/*",
-          "arn:aws:ec2:*:*:instance/*",
-          "arn:aws:ec2:*:*:spot-instances-request/*",
           "arn:aws:ec2:*:*:security-group/*",
           "arn:aws:ec2:*:*:subnet/*",
-          "arn:aws:ec2:*:*:launch-template/*",
         ]
         Action = ["ec2:RunInstances", "ec2:CreateFleet"]
       },
       {
-        Sid      = "AllowScopedEC2InstanceActionsWithTags"
+        Sid      = "AllowScopedEC2LaunchTemplateAccessActions"
         Effect   = "Allow"
-        Resource = ["arn:aws:ec2:*:*:instance/*", "arn:aws:ec2:*:*:launch-template/*"]
-        Action   = ["ec2:CreateLaunchTemplate", "ec2:DeleteLaunchTemplate", "ec2:TerminateInstances"]
+        Resource = "arn:aws:ec2:*:*:launch-template/*"
+        Action   = ["ec2:RunInstances", "ec2:CreateFleet"]
         Condition = {
           StringEquals = {
             "aws:ResourceTag/kubernetes.io/cluster/${var.cluster_name}" = "owned"
           }
+          StringLike = {
+            "aws:ResourceTag/karpenter.sh/nodepool" = "*"
+          }
         }
       },
       {
-        Sid      = "AllowScopedResourceCreationTagging"
-        Effect   = "Allow"
-        Resource = ["arn:aws:ec2:*:*:instance/*", "arn:aws:ec2:*:*:launch-template/*", "arn:aws:ec2:*:*:volume/*", "arn:aws:ec2:*:*:network-interface/*", "arn:aws:ec2:*:*:spot-instances-request/*"]
-        Action   = ["ec2:CreateTags"]
+        Sid    = "AllowScopedEC2InstanceActionsWithTags"
+        Effect = "Allow"
+        Resource = [
+          "arn:aws:ec2:*:*:fleet/*",
+          "arn:aws:ec2:*:*:instance/*",
+          "arn:aws:ec2:*:*:volume/*",
+          "arn:aws:ec2:*:*:network-interface/*",
+          "arn:aws:ec2:*:*:launch-template/*",
+          "arn:aws:ec2:*:*:spot-instances-request/*",
+        ]
+        Action = ["ec2:RunInstances", "ec2:CreateFleet", "ec2:CreateLaunchTemplate"]
+        Condition = {
+          StringEquals = {
+            "aws:RequestTag/kubernetes.io/cluster/${var.cluster_name}" = "owned"
+          }
+          StringLike = {
+            "aws:RequestTag/karpenter.sh/nodepool" = "*"
+          }
+        }
+      },
+      {
+        Sid    = "AllowScopedResourceCreationTagging"
+        Effect = "Allow"
+        Resource = [
+          "arn:aws:ec2:*:*:fleet/*",
+          "arn:aws:ec2:*:*:instance/*",
+          "arn:aws:ec2:*:*:volume/*",
+          "arn:aws:ec2:*:*:network-interface/*",
+          "arn:aws:ec2:*:*:launch-template/*",
+          "arn:aws:ec2:*:*:spot-instances-request/*",
+        ]
+        Action = ["ec2:CreateTags"]
         Condition = {
           StringEquals = {
             "aws:RequestTag/kubernetes.io/cluster/${var.cluster_name}" = "owned"
@@ -126,21 +152,38 @@ resource "aws_iam_policy" "karpenter_controller" {
         }
       },
       {
-        Sid      = "AllowMachineDeletion"
+        Sid      = "AllowScopedResourceTagging"
         Effect   = "Allow"
-        Resource = "*"
-        Action = [
-          "ec2:TerminateInstances",
-          "ec2:DeleteLaunchTemplate",
-        ]
+        Resource = "arn:aws:ec2:*:*:instance/*"
+        Action   = ["ec2:CreateTags"]
         Condition = {
           StringEquals = {
             "aws:ResourceTag/kubernetes.io/cluster/${var.cluster_name}" = "owned"
           }
+          StringLike = {
+            "aws:ResourceTag/karpenter.sh/nodepool" = "*"
+          }
         }
       },
       {
-        Sid      = "AllowEC2ReadActions"
+        Sid    = "AllowScopedDeletion"
+        Effect = "Allow"
+        Resource = [
+          "arn:aws:ec2:*:*:instance/*",
+          "arn:aws:ec2:*:*:launch-template/*",
+        ]
+        Action = ["ec2:TerminateInstances", "ec2:DeleteLaunchTemplate"]
+        Condition = {
+          StringEquals = {
+            "aws:ResourceTag/kubernetes.io/cluster/${var.cluster_name}" = "owned"
+          }
+          StringLike = {
+            "aws:ResourceTag/karpenter.sh/nodepool" = "*"
+          }
+        }
+      },
+      {
+        Sid      = "AllowRegionalReadActions"
         Effect   = "Allow"
         Resource = "*"
         Action = [
@@ -168,8 +211,8 @@ resource "aws_iam_policy" "karpenter_controller" {
         Action   = ["pricing:GetProducts"]
       },
       {
-        Sid    = "AllowInterruptionQueueActions"
-        Effect = "Allow"
+        Sid      = "AllowInterruptionQueueActions"
+        Effect   = "Allow"
         Resource = var.interruption_queue_arn
         Action = [
           "sqs:DeleteMessage",
@@ -188,30 +231,13 @@ resource "aws_iam_policy" "karpenter_controller" {
         }
       },
       {
-        Sid      = "AllowGetInstanceProfile"
+        Sid      = "AllowInstanceProfileReadActions"
         Effect   = "Allow"
         Resource = "*"
         Action   = ["iam:GetInstanceProfile"]
       },
       {
-        Sid      = "AllowScopedInstanceProfileMutations"
-        Effect   = "Allow"
-        Resource = "*"
-        Action = [
-          "iam:AddRoleToInstanceProfile",
-          "iam:CreateInstanceProfile",
-          "iam:DeleteInstanceProfile",
-          "iam:RemoveRoleFromInstanceProfile",
-          "iam:TagInstanceProfile",
-        ]
-        Condition = {
-          StringEquals = {
-            "aws:ResourceTag/kubernetes.io/cluster/${var.cluster_name}" = "owned"
-          }
-        }
-      },
-      {
-        Sid      = "AllowEKSAccess"
+        Sid      = "AllowAPIServerEndpointDiscovery"
         Effect   = "Allow"
         Resource = "arn:aws:eks:${local.region}:${local.account}:cluster/${var.cluster_name}"
         Action   = ["eks:DescribeCluster"]
