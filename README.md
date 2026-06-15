@@ -133,7 +133,7 @@ aws sqs send-message \
 kubectl get pods -n sqs-processor -w
 
 # Confirm the message landed in S3
-aws s3 ls s3://sqs-job-dev-messages-${data.aws_caller_identity.current.account_id} --region eu-central-1
+aws s3 ls s3://sqs-job-dev-messages-194636597980 --region eu-central-1
 ```
 
 ### Makefile Targets

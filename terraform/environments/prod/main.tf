@@ -51,7 +51,7 @@ module "eks" {
   vpc_id       = module.vpc.vpc_id
   private_subnets = module.vpc.private_subnets
 
-  cluster_endpoint_public_access = false
+  cluster_endpoint_public_access = true
   system_node_group = {
     instance_types = ["t3.large"]
     desired_size   = 2
