@@ -4,14 +4,14 @@ kind: Kustomization
 namespace: sqs-processor
 
 resources:
-  - ../../base
+- ../../base
 
 patches:
-  - path: queue-url-patch.yaml
+- path: queue-url-patch.yaml
 
 # CD pipeline updates newTag on every successful build of the dev branch.
 # Format: dev-<short-git-sha>  e.g. dev-a1b2c3d4
 images:
-  - name: platform/sqs-to-s3-job
-    newName: REPLACE_WITH_ECR_REGISTRY/platform/sqs-to-s3-job
-    newTag: dev-placeholder
+- name: platform/sqs-to-s3-job
+  newName: 194636597980.dkr.ecr.eu-central-1.amazonaws.com/platform/sqs-to-s3-job
+  newTag: dev-2d9ae490
