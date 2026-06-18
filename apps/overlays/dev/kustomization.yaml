@@ -14,4 +14,4 @@ patches:
 images:
 - name: platform/sqs-to-s3-job
   newName: 194636597980.dkr.ecr.eu-central-1.amazonaws.com/platform/sqs-to-s3-job
-  newTag: dev-2d9ae490
+  newTag: dev-dc64fa8e
